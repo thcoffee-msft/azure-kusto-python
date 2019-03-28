@@ -1,8 +1,13 @@
 ﻿"""A simple example how to use KustoClient."""
+from asyncio import run
+import nest_asyncio
 
 from azure.kusto.data.request import KustoClient, KustoConnectionStringBuilder, ClientRequestProperties
 from azure.kusto.data.exceptions import KustoServiceError
 from azure.kusto.data.helpers import dataframe_from_result_table
+
+# Required to run in environment with existing event loop, e.g., Jupyter
+nest_asyncio.apply()
 
 
 ######################################################
@@ -52,7 +57,7 @@ client = KustoClient(kcsb)
 db = "Samples"
 query = "StormEvents | take 10"
 
-response = client.execute(db, query)
+response = run(client.execute(db, query))
 
 # iterating over rows is possible
 for row in response.primary_results[0]:
@@ -79,7 +84,7 @@ print(dataframe)
 # Query is too big to be executed
 query = "StormEvents"
 try:
-    response = client.execute(db, query)
+    response = run(client.execute(db, query))
 except KustoServiceError as error:
     print("2. Error:", error)
     print("2. Is semantic error:", error.is_semantic_error())
@@ -88,7 +93,7 @@ except KustoServiceError as error:
 
 properties = ClientRequestProperties()
 properties.set_option(properties.OptionDeferPartialQueryFailures, True)
-response = client.execute(db, query, properties=properties)
+response = run(client.execute(db, query, properties=properties))
 print("3. Response error count: ", response.errors_count)
 print("3. Exceptions:", response.get_exceptions())
 print("3. Result size:", len(response.primary_results))
@@ -96,7 +101,7 @@ print("3. Result size:", len(response.primary_results))
 # Query has semantic error
 query = "StormEvents | where foo = bar"
 try:
-    response = client.execute(db, query)
+    response = run(client.execute(db, query))
 except KustoServiceError as error:
     print("4. Error:", error)
     print("4. Is semantic error:", error.is_semantic_error())
@@ -104,11 +109,11 @@ except KustoServiceError as error:
 
 
 client = KustoClient("https://kustolab.kusto.windows.net")
-response = client.execute("ML", ".show version")
+response = run(client.execute("ML", ".show version"))
 
 query = """
 let max_t = datetime(2016-09-03);
 service_traffic
 | make-series num=count() on TimeStamp in range(max_t-5d, max_t, 1h) by OsVer
 """
-response = client.execute_query("ML", query).primary_results[0]
+response = run(client.execute_query("ML", query)).primary_results[0]

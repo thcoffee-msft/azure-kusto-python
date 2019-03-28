@@ -2,17 +2,22 @@
 
 import uuid
 import json
-import requests
 
 from requests.adapters import HTTPAdapter
 
 from datetime import timedelta
 from enum import Enum, unique
+from requests_futures.sessions import FuturesSession
+from asyncio import wrap_future
+import nest_asyncio
 
 from .security import _AadHelper
 from .exceptions import KustoServiceError
 from ._response import KustoResponseDataSetV1, KustoResponseDataSetV2
 from ._version import VERSION
+
+# Required to run in environment with existing event loop, e.g., Jupyter
+nest_asyncio.apply()
 
 
 class KustoConnectionStringBuilder(object):
@@ -246,8 +251,8 @@ class KustoClient(object):
     # The maximum amount of connections to be able to operate in parallel
     _max_pool_size = 100
 
-    def __init__(self, kcsb):
-        """Kusto Client constructor.
+    def __init__(self, kcsb, **kwargs):
+        """Kusto Client constructor. Additional parameters passed to session constructor.
         :param kcsb: The connection string to initialize KustoClient.
         :type kcsb: azure.kusto.data.request.KustoConnectionStringBuilder or str
         """
@@ -256,7 +261,7 @@ class KustoClient(object):
         kusto_cluster = kcsb.data_source
 
         # Create a session object for connection pooling
-        self._session = requests.Session()
+        self._session = FuturesSession(**kwargs)
         self._session.mount("http://", HTTPAdapter(pool_maxsize=self._max_pool_size))
         self._session.mount("https://", HTTPAdapter(pool_maxsize=self._max_pool_size))
 
@@ -264,7 +269,7 @@ class KustoClient(object):
         self._query_endpoint = "{0}/v2/rest/query".format(kusto_cluster)
         self._auth_provider = _AadHelper(kcsb) if kcsb.aad_federated_security else None
 
-    def execute(self, database, query, properties=None):
+    async def execute(self, database, query, properties=None):
         """Executes a query or management command.
         :param str database: Database against query will be executed.
         :param str query: Query to be executed.
@@ -273,10 +278,10 @@ class KustoClient(object):
         :rtype: azure.kusto.data._response.KustoResponseDataSet
         """
         if query.startswith("."):
-            return self.execute_mgmt(database, query, properties)
-        return self.execute_query(database, query, properties)
+            return await self.execute_mgmt(database, query, properties)
+        return await self.execute_query(database, query, properties)
 
-    def execute_query(self, database, query, properties=None):
+    async def execute_query(self, database, query, properties=None):
         """Executes a query.
         :param str database: Database against query will be executed.
         :param str query: Query to be executed.
@@ -284,9 +289,9 @@ class KustoClient(object):
         :return: Kusto response data set.
         :rtype: azure.kusto.data._response.KustoResponseDataSet
         """
-        return self._execute(self._query_endpoint, database, query, KustoClient._query_default_timeout, properties)
+        return await self._execute(self._query_endpoint, database, query, KustoClient._query_default_timeout, properties)
 
-    def execute_mgmt(self, database, query, properties=None):
+    async def execute_mgmt(self, database, query, properties=None):
         """Executes a management command.
         :param str database: Database against query will be executed.
         :param str query: Query to be executed.
@@ -294,9 +299,9 @@ class KustoClient(object):
         :return: Kusto response data set.
         :rtype: azure.kusto.data._response.KustoResponseDataSet
         """
-        return self._execute(self._mgmt_endpoint, database, query, KustoClient._mgmt_default_timeout, properties)
+        return await self._execute(self._mgmt_endpoint, database, query, KustoClient._mgmt_default_timeout, properties)
 
-    def _execute(self, endpoint, database, query, default_timeout, properties=None):
+    async def _execute(self, endpoint, database, query, default_timeout, properties=None):
         """Executes given query against this client"""
 
         request_payload = {"db": database, "csl": query}
@@ -315,7 +320,7 @@ class KustoClient(object):
             request_headers["Authorization"] = self._auth_provider.acquire_authorization_header()
 
         timeout = self._get_timeout(properties, default_timeout)
-        response = self._session.post(endpoint, headers=request_headers, json=request_payload, timeout=timeout)
+        response = await wrap_future(self._session.post(endpoint, headers=request_headers, json=request_payload, timeout=timeout))
 
         if response.status_code == 200:
             if endpoint.endswith("v2/rest/query"):

@@ -4,6 +4,7 @@ import time
 import os
 import uuid
 from six import text_type
+import nest_asyncio
 
 from azure.kusto.data.request import KustoClient, KustoConnectionStringBuilder
 from azure.kusto.ingest.status import KustoIngestStatusQueues
@@ -20,6 +21,9 @@ from azure.kusto.ingest import (
     ReportMethod,
     FileDescriptor,
 )
+
+# Required to run in environment with existing event loop, e.g., Jupyter
+nest_asyncio.apply()
 
 # TODO: change this file to use pytest as runner
 
@@ -135,7 +139,7 @@ def test_csv_ingest_non_existing_table():
     assert successes == 2
     # TODO: status queues only mark ingestion was successful, but takes time for data to become available
     time.sleep(20)
-    response = client.execute(db_name, "{} | count".format(table_name))
+    response = run(client.execute(db_name, "{} | count".format(table_name)))
     for row in response.primary_results[0]:
         assert int(row["Count"]) == 20, "{0} | count = {1}".format(table_name, text_type(row["Count"]))
 
@@ -175,7 +179,7 @@ def test_json_ingest_existing_table():
     assert successes == 2
     # TODO: status queues only mark ingestion was successful, but takes time for data to become available
     time.sleep(20)
-    response = client.execute(db_name, "{} | count".format(table_name))
+    response = run(client.execute(db_name, "{} | count".format(table_name)))
     for row in response.primary_results[0]:
         assert int(row["Count"]) == 24, "{0} | count = {1}".format(table_name, text_type(row["Count"]))
 
@@ -226,7 +230,7 @@ def test_ingest_complicated_props():
     assert successes == 2
     # TODO: status queues only mark ingestion was successful, but takes time for data to become available
     time.sleep(20)
-    response = client.execute(db_name, "{} | count".format(table_name))
+    response = run(client.execute(db_name, "{} | count".format(table_name)))
     for row in response.primary_results[0]:
         assert int(row["Count"]) == 28, "{0} | count = {1}".format(table_name, text_type(row["Count"]))
 
@@ -263,7 +267,7 @@ def test_json_ingestion_ingest_by_tag():
     assert successes == 2
     # TODO: status queues only mark ingestion was successful, but takes time for data to become available
     time.sleep(20)
-    response = client.execute(db_name, "{} | count".format(table_name))
+    response = run(client.execute(db_name, "{} | count".format(table_name)))
     for row in response.primary_results[0]:
         assert int(row["Count"]) == 28, "{0} | count = {1}".format(table_name, text_type(row["Count"]))
 
@@ -298,6 +302,6 @@ def test_tsv_ingestion_csv_mapping():
     assert successes == 1
     # TODO: status queues only mark ingestion was successful, but takes time for data to become available
     time.sleep(20)
-    response = client.execute(db_name, "{} | count".format(table_name))
+    response = run(client.execute(db_name, "{} | count".format(table_name)))
     for row in response.primary_results[0]:
         assert int(row["Count"]) == 38, "{0} | count = {1}".format(table_name, text_type(row["Count"]))
